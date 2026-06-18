@@ -136,7 +136,7 @@ func (p *Processor) createMatchers(req models.HARRequest) []models.Matcher {
 		matchers = append(matchers, models.Matcher{
 			Type: models.MatcherBody,
 			Config: models.MatcherConfig{
-				Value: req.PostData.Text[:min(100, len(req.PostData.Text))],
+				Value: req.PostData.Text[:minInt(100, len(req.PostData.Text))],
 			},
 		})
 	}
@@ -243,7 +243,7 @@ func isHopHeader(name string) bool {
 	return hopHeaders[name]
 }
 
-func min(a, b int) int {
+func minInt(a, b int) int {
 	if a < b {
 		return a
 	}

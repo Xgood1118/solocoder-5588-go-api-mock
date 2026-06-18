@@ -80,7 +80,11 @@ func TruncateString(s string, maxLen int) string {
 
 func GetClientIP(remoteAddr string) string {
 	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
-		return remoteAddr[:idx]
+		host := remoteAddr[:idx]
+		if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+			host = host[1 : len(host)-1]
+		}
+		return host
 	}
 	return remoteAddr
 }

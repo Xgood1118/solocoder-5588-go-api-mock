@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"apimock/internal/har"
 	"apimock/internal/models"
 	"apimock/internal/scene"
 	"apimock/internal/storage"
@@ -14,12 +15,14 @@ import (
 type API struct {
 	store        *storage.Storage
 	sceneManager *scene.Manager
+	harProcessor *har.Processor
 }
 
-func New(store *storage.Storage, sceneManager *scene.Manager) *API {
+func New(store *storage.Storage, sceneManager *scene.Manager, harProcessor *har.Processor) *API {
 	return &API{
 		store:        store,
 		sceneManager: sceneManager,
+		harProcessor: harProcessor,
 	}
 }
 
@@ -351,11 +354,44 @@ func (a *API) DeleteHARSession(c *gin.Context) {
 }
 
 func (a *API) ReplayHARSession(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "HAR replay initiated", "id": c.Param("id")})
+	id := c.Param("id")
+	if err := a.harProcessor.ReplaySession(id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "HAR replay completed", "id": id})
 }
 
 func (a *API) ExtractRulesFromHAR(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "Rule extraction initiated", "id": c.Param("id")})
+	id := c.Param("id")
+	harData, err := a.store.GetHARSession(id)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			c.JSON(http.StatusNotFound, gin.H{"error": "HAR session not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	scene := c.Query("scene")
+	result, err := a.harProcessor.ImportAndSaveRules(harData, scene)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	importedIDs := make([]string, 0, len(result.Imported))
+	for _, r := range result.Imported {
+		importedIDs = append(importedIDs, r.ID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"imported_count": len(result.Imported),
+		"imported_ids":   importedIDs,
+		"skipped":        result.Skipped,
+		"error_count":    len(result.Errors),
+	})
 }
 
 func (a *API) ListRequestSummaries(c *gin.Context) {

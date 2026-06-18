@@ -46,3 +46,4 @@ type MatcherConfig struct {
 	Probability  float64  `json:"probability,omitempty"`
 	IgnoreCase   bool     `json:"ignore_case,omitempty"`
 	PathSegment  int      `json:"path_segment,omitempty"`
+}

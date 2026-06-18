@@ -50,7 +50,7 @@ func main() {
 	mockEngine := gin.Default()
 	mockEngine.Use(corsMiddleware())
 
-	adminAPI := adminapi.New(store, sceneManager)
+	adminAPI := adminapi.New(store, sceneManager, harProcessor)
 	adminAPI.RegisterRoutes(mockEngine)
 
 	mockSrv := mockserver.New(store, sceneManager)

@@ -15,12 +15,13 @@ import (
 )
 
 type RequestContext struct {
-	Method   string
-	Path     string
-	Headers  http.Header
-	Query    url.Values
-	Body     []byte
-	ClientIP string
+	Method     string
+	Path       string
+	Headers    http.Header
+	Query      url.Values
+	Body       []byte
+	ClientIP   string
+	PathParams map[string]string
 }
 
 type MatcherFunc func(ctx *RequestContext, config models.MatcherConfig) bool

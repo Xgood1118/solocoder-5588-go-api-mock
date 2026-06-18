@@ -34,21 +34,19 @@ func (s *Server) RegisterRoutes(r *gin.Engine) {
 }
 
 func (s *Server) handleMockRequest(c *gin.Context) {
-	if strings.HasPrefix(c.Request.URL.Path, "/api/admin") {
-		c.Next()
-		return
-	}
-
 	bodyBytes, _ := io.ReadAll(c.Request.Body)
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
+	pathParams := make(map[string]string)
+
 	ctx := &matcher.RequestContext{
-		Method:   c.Request.Method,
-		Path:     c.Request.URL.Path,
-		Headers:  c.Request.Header,
-		Query:    c.Request.URL.Query(),
-		Body:     bodyBytes,
-		ClientIP: utils.GetClientIP(c.Request.RemoteAddr),
+		Method:     c.Request.Method,
+		Path:       c.Request.URL.Path,
+		Headers:    c.Request.Header,
+		Query:      c.Request.URL.Query(),
+		Body:       bodyBytes,
+		ClientIP:   utils.GetClientIP(c.Request.RemoteAddr),
+		PathParams: pathParams,
 	}
 
 	sceneName := s.sceneManager.GetSceneFromRequest(c.Request)
@@ -56,10 +54,10 @@ func (s *Server) handleMockRequest(c *gin.Context) {
 
 	if rule == nil {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":   "no matching rule found",
-			"scene":   sceneName,
-			"method":  ctx.Method,
-			"path":    ctx.Path,
+			"error":  "no matching rule found",
+			"scene":  sceneName,
+			"method": ctx.Method,
+			"path":   ctx.Path,
 		})
 		return
 	}
@@ -78,12 +76,26 @@ func (s *Server) findMatchingRule(ctx *matcher.RequestContext, sceneName string)
 		return nil
 	}
 
+	if sceneName != models.DefaultScene {
+		defaultRules, err := s.store.ListRules(models.DefaultScene)
+		if err == nil {
+			rules = append(rules, defaultRules...)
+		}
+	}
+
 	var applicableRules []*models.Rule
 	for _, rule := range rules {
 		if !rule.Enabled {
 			continue
 		}
-		if s.matchEndpoint(ctx, rule.Endpoint) {
+		pathParams, matched := s.matchEndpoint(ctx, rule.Endpoint)
+		if matched {
+			if ctx.PathParams == nil {
+				ctx.PathParams = make(map[string]string)
+			}
+			for k, v := range pathParams {
+				ctx.PathParams[k] = v
+			}
 			applicableRules = append(applicableRules, rule)
 		}
 	}
@@ -101,34 +113,43 @@ func (s *Server) findMatchingRule(ctx *matcher.RequestContext, sceneName string)
 	return nil
 }
 
-func (s *Server) matchEndpoint(ctx *matcher.RequestContext, endpoint models.Endpoint) bool {
+func (s *Server) matchEndpoint(ctx *matcher.RequestContext, endpoint models.Endpoint) (map[string]string, bool) {
 	if !strings.EqualFold(ctx.Method, endpoint.Method) {
-		return false
+		return nil, false
 	}
 
-	return s.matchPath(ctx.Path, endpoint.Path)
+	pathParams, matched := matchPathWithParams(ctx.Path, endpoint.Path)
+	return pathParams, matched
 }
 
-func (s *Server) matchPath(requestPath, patternPath string) bool {
+func matchPathWithParams(requestPath, patternPath string) (map[string]string, bool) {
 	requestSegs := utils.PathToSegments(requestPath)
 	patternSegs := utils.PathToSegments(patternPath)
 
 	if len(requestSegs) != len(patternSegs) {
-		return false
+		return nil, false
 	}
+
+	pathParams := make(map[string]string)
 
 	for i := range requestSegs {
 		patternSeg := patternSegs[i]
 		requestSeg := requestSegs[i]
 
 		if strings.HasPrefix(patternSeg, ":") {
+			paramName := patternSeg[1:]
+			pathParams[paramName] = requestSeg
+			continue
+		}
+
+		if patternSeg == "*" {
 			continue
 		}
 
 		if patternSeg != requestSeg {
-			return false
+			return nil, false
 		}
 	}
 
-	return true
+	return pathParams, true
 }
